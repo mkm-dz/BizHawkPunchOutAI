@@ -748,7 +748,7 @@ namespace BizHawk.Client.EmuHawk
 						// we do this so we only need one command object after this code block.
 						if (command_type == "buttons")
 						{
-							command.p2 = command_p2.p1;
+							command.p2 = command_p2.p2;
 						}
 					
 					}

@@ -1024,6 +1024,18 @@
     <Compile Include="tools\PCE\PCETileViewer.Designer.cs">
       <DependentUpon>PCETileViewer.cs</DependentUpon>
     </Compile>
+    <Compile Include="tools\PunchoutBot\PunchOutBot.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="tools\PunchoutBot\PunchoutBot.Designer.cs">
+      <DependentUpon>PunchOutBot.cs</DependentUpon>
+    </Compile>
+    <Compile Include="tools\PunchoutBot\PunchOutBotControlsRow.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="tools\PunchoutBot\PunchoutBotControlsRow.Designer.cs">
+      <DependentUpon>PunchOutBotControlsRow.cs</DependentUpon>
+    </Compile>
     <Compile Include="tools\SMS\VDPViewer.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -1588,6 +1600,12 @@
     </EmbeddedResource>
     <EmbeddedResource Include="tools\PCE\PCETileViewer.resx">
       <DependentUpon>PCETileViewer.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="tools\PunchoutBot\PunchOutBot.resx">
+      <DependentUpon>PunchOutBot.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="tools\PunchoutBot\PunchOutBotControlsRow.resx">
+      <DependentUpon>PunchOutBotControlsRow.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="tools\SMS\VDPViewer.resx">
       <DependentUpon>VDPViewer.cs</DependentUpon>

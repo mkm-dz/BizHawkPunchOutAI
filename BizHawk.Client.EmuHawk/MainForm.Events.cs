@@ -1466,6 +1466,11 @@ namespace BizHawk.Client.EmuHawk
 			GlobalWin.Tools.Load<BasicBot>();
 		}
 
+		private void PunchOutBotMenuItem_Click(object sender, EventArgs e)
+		{
+			GlobalWin.Tools.Load<PunchOutBot>();
+		}
+
 		private void CheatsMenuItem_Click(object sender, EventArgs e)
 		{
 			GlobalWin.Tools.Load<Cheats>();

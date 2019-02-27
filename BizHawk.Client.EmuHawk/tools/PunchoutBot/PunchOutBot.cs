@@ -31,10 +31,9 @@ namespace BizHawk.Client.EmuHawk
 		private const int clientPort = 9999;
 		private const int serverPort = 9998;
 
-		private const int framesPerCommand = 21;
+		private int framesPerCommand = 40;
 		private int currentFrameCounter = 0;
 		private bool waitingForOpponentActionToEnd = false;
-		private bool waitingForMacActionToEnd = false;
 		private bool onReset = false;
 
 		private TextInfo capitalize = new CultureInfo("en-US", false).TextInfo;
@@ -82,6 +81,7 @@ namespace BizHawk.Client.EmuHawk
 		private int _totalGames = 0;
 		private int _OSDMessageTimeInSeconds = 150;
 		private int _post_round_wait_time = 0;
+		private bool sendStateToServer = false;
 		public bool game_in_progress = false;
 
 		private ILogEntryGenerator _logGenerator;
@@ -220,7 +220,7 @@ namespace BizHawk.Client.EmuHawk
 			return _currentDomain.PeekByte(0x00BC);
 		}
 
-		public bool IsOpponentMoving()
+		public bool IsOpponentMovingInMemory()
 		{
 			if (_currentDomain.PeekByte(0x0097) != 0)
 			{
@@ -230,22 +230,10 @@ namespace BizHawk.Client.EmuHawk
 			return false;
 		}
 
-		public bool IsOpponentStartingAnAction()
-		{
-			if (!this.waitingForOpponentActionToEnd && this.IsOpponentMoving())
-			{
-				this.waitingForOpponentActionToEnd = true;
-				return true;
-			}
-
-			return false;
-		}
-
-		public bool IsMacMoving()
+		public bool IsMacMovingOnMemory()
 		{
 
-			if ((_currentDomain.PeekByte(0x0051) != 0)
-				|| this.waitingForMacActionToEnd)
+			if ((_currentDomain.PeekByte(0x0051) != 0))
 			{
 				return true;
 			}
@@ -668,34 +656,28 @@ namespace BizHawk.Client.EmuHawk
 
 		private void Update(bool fast)
 		{
+			// Every frame we assume we don't want to send our state unless somebody wants to during this iteration.
+			this.sendStateToServer = false;
+
 			// Reset has priority on everyframe
 			this.ExecuteResetIfNeeded();
 
 			// Resume a paused game has priority
 			this.ResumeGameIfNeeded();
 
-			// If Mac is executing a move we want to make sure it gets executed so we execute it over x 
-			// amount of frames
-			this.ExecuteMacMoveForSeveralFrames();
+			// Execute any action pending on Mac side
+			this.ExecuteMacActionIfNeeded();
 
-			if (this.IsOpponentStartingAnAction() && !this.IsMacMoving() && this.GetOpponentActionTimer()==0)
+			// We need to check if the opponent is attacking us.
+			this.HasOpponentStartedAnAttack();
+
+			if (this.sendStateToServer)
 			{
 				// send status to server.
 				GameState gs = GetCurrentState();
 				this.SendEmulatorGameStateToController(gs);
 			}
-			else if (this.waitingForOpponentActionToEnd && !this.IsOpponentMoving() && !this.waitingForMacActionToEnd)
-			{
-				this.waitingForOpponentActionToEnd = false;
 
-				// action finished send status to server and let the game continue (if needed)
-				GameState gs = GetCurrentState();
-				this.SendEmulatorGameStateToController(gs);
-			}
-			else
-			{
-				this.ExecuteMacActionIfNeeded();
-			}
 		}
 
 		private void ExecuteResetIfNeeded()
@@ -703,8 +685,7 @@ namespace BizHawk.Client.EmuHawk
 			if (this.IsRoundOver())
 			{
 				// if the round is over we clear any message waiting on the agent.
-				GameState gs = GetCurrentState();
-				this.SendEmulatorGameStateToController(gs);
+				this.sendStateToServer = true;
 			}
 
 			if (this.commandInQueueAvailable && this.commandInQueue.type == "reset")
@@ -712,8 +693,7 @@ namespace BizHawk.Client.EmuHawk
 				this.commandInQueueAvailable = false;
 
 				// This is only for letting the server know we executed the command.
-				GameState gs = GetCurrentState();
-				this.SendEmulatorGameStateToController(gs);
+				this.sendStateToServer = true;
 				if (_isBotting)
 				{
 					try
@@ -762,43 +742,78 @@ namespace BizHawk.Client.EmuHawk
 			}
 		}
 
+		/// <summary>
+		/// Verifies if Mac is required to execute an action or if any button pressing is needed
+		/// </summary>
 		private void ExecuteMacActionIfNeeded()
 		{
 			// After one action we do not need the reset flag
 			this.onReset = false;
 
-			if (this.commandInQueueAvailable && this.commandInQueue.type == "buttons" && !this.waitingForMacActionToEnd)
+			// If we have a pending command and we are not pressing the buttons or moving, execute movement.
+			if (this.commandInQueueAvailable && this.commandInQueue.type == "buttons"
+				&& !this.IsMacPressingButtons() && !this.IsMacMovingOnMemory())
 			{
 				this.currentFrameCounter = 1;
 			}
-			else if(!this.IsMacMoving())
-			{
-				// Tell the frontend retrieve my state and execute action (Cause at this point nobody is)
-				GameState gs = GetCurrentState();
-				this.SendEmulatorGameStateToController(gs);
-			}
+
+			this.PressButtonsIfNeeded();
 		}
 
-		private void ExecuteMacMoveForSeveralFrames()
+		/// <summary>
+		/// Executes Mac moves over an X amount of frames to guarantee the movement execution.
+		/// </summary>
+		private void PressButtonsIfNeeded()
 		{
-			if (this.currentFrameCounter > 0 && this.currentFrameCounter <= PunchOutBot.framesPerCommand)
+			if (this.IsMacPressingButtons())
 			{
 				if (this.currentFrameCounter == 1)
 				{
 					string buttonsPressed = SetJoypadButtons(this.commandInQueue.p1, 1);
 					GlobalWin.OSD.ClearGUIText();
 					GlobalWin.OSD.AddMessageForTime(buttonsPressed, _OSDMessageTimeInSeconds);
-					this.waitingForMacActionToEnd = true;
 				}
 
 				this.currentFrameCounter++;
-				if (this.currentFrameCounter == PunchOutBot.framesPerCommand)
+				if (this.currentFrameCounter == this.framesPerCommand)
 				{
 					SetJoypadButtons(this.commandInQueue.p1, 1, true);
 					this.currentFrameCounter = 0;
 					this.commandInQueueAvailable = false;
-					this.waitingForMacActionToEnd = false;
+					this.sendStateToServer = true;
 				}
+			}
+		}
+
+		/// <summary>
+		/// Is Mac pressing any button
+		/// </summary>
+		/// <returns>true if buttons are being pressed false otherwise</returns>
+		private bool IsMacPressingButtons()
+		{
+			if(this.currentFrameCounter > 0 && this.currentFrameCounter <= this.framesPerCommand)
+			{
+				return true;
+			}
+
+			return false;
+		}
+
+		/// <summary>
+		/// Verifies if opponent has started an attack, this method considers only NEW attacks
+		/// </summary>
+		private void HasOpponentStartedAnAttack()
+		{
+
+			if(!this.waitingForOpponentActionToEnd && this.IsOpponentMovingInMemory())
+			{
+				this.waitingForOpponentActionToEnd = true;
+				this.sendStateToServer = true;
+			}
+
+			if(this.waitingForOpponentActionToEnd && !this.IsOpponentMovingInMemory())
+			{
+				this.waitingForOpponentActionToEnd = false;
 			}
 		}
 
@@ -809,7 +824,6 @@ namespace BizHawk.Client.EmuHawk
 			try
 			{
 				cl = new TcpClient(PunchOutBot.serverAddress, PunchOutBot.clientPort);
-				//Console.WriteLine("*****Connected, no sending command");
 				NetworkStream stream = cl.GetStream();
 				byte[] bytes = new byte[1024];
 				string data = JsonConvert.SerializeObject(state);
@@ -873,10 +887,6 @@ namespace BizHawk.Client.EmuHawk
 				SetNormalSpeed();
 			}
 			GlobalWin.MainForm.ClickSpeedItem(Global.Config.emulator_speed_percent);
-			//if (Settings.TurboWhenBotting)
-			//{
-			//	SetMaxSpeed();
-			//}
 
 			UpdateBotStatusIcon();
 			MessageLabel.Text = "Running...";

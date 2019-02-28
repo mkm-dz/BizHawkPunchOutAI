@@ -25,7 +25,7 @@ namespace BizHawk.Client.EmuHawk
 	public partial class PunchOutBot : ToolFormBase, IToolFormAutoConfig
 	{
 		private const string DialogTitle = "PunchOut Bot";
-
+		
 		private string _currentFileName = "";
 		private const string serverAddress = "127.0.0.1";
 		private const int clientPort = 9999;
@@ -777,7 +777,9 @@ namespace BizHawk.Client.EmuHawk
 		{
 			if (this.IsMacPressingButtons())
 			{
-				if (this.currentFrameCounter == 10)
+				//Don Flamenco 10 delayed frames
+				// Von Kayzer 18 delayed frames
+				if (this.currentFrameCounter == 18)
 				{
 					string buttonsPressed = SetJoypadButtons(this.commandInQueue.p1, 1);
 					GlobalWin.OSD.ClearGUIText();

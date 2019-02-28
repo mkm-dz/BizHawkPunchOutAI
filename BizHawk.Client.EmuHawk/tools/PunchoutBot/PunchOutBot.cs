@@ -31,7 +31,7 @@ namespace BizHawk.Client.EmuHawk
 		private const int clientPort = 9999;
 		private const int serverPort = 9998;
 
-		private int framesPerCommand = 40;
+		private int framesPerCommand = 45;
 		private int currentFrameCounter = 0;
 		private bool waitingForOpponentActionToEnd = false;
 		private bool onReset = false;
@@ -198,6 +198,11 @@ namespace BizHawk.Client.EmuHawk
 		public int GetOpponentAction()
 		{
 			return _currentDomain.PeekByte(0x003A);
+		}
+
+		public int GetOpponentSecondaryAction()
+		{
+			return _currentDomain.PeekByte(0x003B);
 		}
 
 		public int GetOpponentActionTimer()
@@ -398,6 +403,8 @@ namespace BizHawk.Client.EmuHawk
 
 			public int action { get; set; }
 
+			public int secondaryAction { get; set; }
+
 			public int actionTimer { get; set; }
 
 			public int canThrowPunches { get; set; }
@@ -429,20 +436,20 @@ namespace BizHawk.Client.EmuHawk
 			p1.score = this.GetScore();
 			p1.canThrowPunches = this.CanThrowPunches();
 
-			p2.health = GetHealthP2();
-			p2.action = GetOpponentAction();
-			p2.buttons = GetJoypadButtons(2);
-			p2.actionTimer = GetOpponentActionTimer();
-			p2.character = GetOpponentId();
+			p2.health = this.GetHealthP2();
+			p2.action = this.GetOpponentAction();
+			p2.buttons = this.GetJoypadButtons(2);
+			p2.actionTimer = this.GetOpponentActionTimer();
+			p2.character = this.GetOpponentId();
 			p2.canThrowPunches = 0;
-
+			p2.secondaryAction = this.GetOpponentSecondaryAction();
 
 			gs.p1 = p1;
 			gs.p2 = p2;
 			gs.result = GetRoundResult();
 			gs.frame = Emulator.Frame;
-			gs.round_started = IsRoundStarted();
-			gs.round_over = IsRoundOver();
+			gs.round_started = this.IsRoundStarted();
+			gs.round_over = this.IsRoundOver();
 
 			return gs;
 		}
@@ -770,7 +777,7 @@ namespace BizHawk.Client.EmuHawk
 		{
 			if (this.IsMacPressingButtons())
 			{
-				if (this.currentFrameCounter == 1)
+				if (this.currentFrameCounter == 10)
 				{
 					string buttonsPressed = SetJoypadButtons(this.commandInQueue.p1, 1);
 					GlobalWin.OSD.ClearGUIText();

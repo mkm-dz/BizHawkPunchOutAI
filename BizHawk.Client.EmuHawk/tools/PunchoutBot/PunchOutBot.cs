@@ -671,6 +671,9 @@ namespace BizHawk.Client.EmuHawk
 			// We need to check if the opponent is attacking us.
 			this.HasOpponentStartedAnAttack();
 
+			// If mac is idle we need to notify the server (who is prepared to listen everytime we send the state)
+			this.IsMacIdle();
+
 			if (this.sendStateToServer)
 			{
 				// send status to server.
@@ -814,6 +817,17 @@ namespace BizHawk.Client.EmuHawk
 			if(this.waitingForOpponentActionToEnd && !this.IsOpponentMovingInMemory())
 			{
 				this.waitingForOpponentActionToEnd = false;
+			}
+		}
+
+		/// <summary>
+		/// Verifies if Nac is idle
+		/// </summary>
+		private void IsMacIdle()
+		{
+			if(!this.IsMacPressingButtons() && !this.IsMacMovingOnMemory())
+			{
+				this.sendStateToServer = true;
 			}
 		}
 

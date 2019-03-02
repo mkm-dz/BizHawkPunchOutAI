@@ -31,8 +31,9 @@ namespace BizHawk.Client.EmuHawk
 		private const int clientPort = 9999;
 		private const int serverPort = 9998;
 
-		private int framesPerCommand = 45;
+		private int framesPerCommand = 50;
 		private int currentFrameCounter = 0;
+		private int lastTimingDelay = 0;
 		private bool waitingForOpponentActionToEnd = false;
 		private bool onReset = false;
 
@@ -225,6 +226,11 @@ namespace BizHawk.Client.EmuHawk
 			return _currentDomain.PeekByte(0x00BC);
 		}
 
+		public int GetStars()
+		{
+			return _currentDomain.PeekByte(0x0342);
+		}
+
 		public bool IsOpponentMovingInMemory()
 		{
 			if (_currentDomain.PeekByte(0x0097) != 0)
@@ -409,6 +415,8 @@ namespace BizHawk.Client.EmuHawk
 
 			public int canThrowPunches { get; set; }
 
+			public int stars { get; set; }
+
 		}
 		private class GameState
 		{
@@ -435,6 +443,7 @@ namespace BizHawk.Client.EmuHawk
 			p1.hearts = this.GetHearts();
 			p1.score = this.GetScore();
 			p1.canThrowPunches = this.CanThrowPunches();
+			p1.stars = this.GetStars();
 
 			p2.health = this.GetHealthP2();
 			p2.action = this.GetOpponentAction();
@@ -443,6 +452,7 @@ namespace BizHawk.Client.EmuHawk
 			p2.character = this.GetOpponentId();
 			p2.canThrowPunches = 0;
 			p2.secondaryAction = this.GetOpponentSecondaryAction();
+			p2.stars = 0;
 
 			gs.p1 = p1;
 			gs.p2 = p2;
@@ -595,6 +605,7 @@ namespace BizHawk.Client.EmuHawk
 		{
 			public ControllerCommand() { }
 			public string type { get; set; }
+			public string timing { get; set; }
 			public Dictionary<string, bool> p1 { get; set; }
 			public Dictionary<string, bool> p2 { get; set; }
 			public string savegamepath { get; set; }
@@ -764,6 +775,7 @@ namespace BizHawk.Client.EmuHawk
 			if (this.commandInQueueAvailable && this.commandInQueue.type == "buttons"
 				&& !this.IsMacPressingButtons() && !this.IsMacMovingOnMemory())
 			{
+				this.lastTimingDelay = this.CalculateMoveStart();
 				this.currentFrameCounter = 1;
 			}
 
@@ -779,21 +791,37 @@ namespace BizHawk.Client.EmuHawk
 			{
 				//Don Flamenco 10 delayed frames
 				// Von Kayzer 18 delayed frames
-				if (this.currentFrameCounter == 18)
+				if (this.currentFrameCounter == this.lastTimingDelay)
 				{
 					string buttonsPressed = SetJoypadButtons(this.commandInQueue.p1, 1);
+					buttonsPressed +=String.Format(" {0} f.", this.lastTimingDelay);
 					GlobalWin.OSD.ClearGUIText();
 					GlobalWin.OSD.AddMessageForTime(buttonsPressed, _OSDMessageTimeInSeconds);
+					this.commandInQueueAvailable = false;
 				}
 
 				this.currentFrameCounter++;
-				if (this.currentFrameCounter == this.framesPerCommand)
+				if (this.currentFrameCounter == (this.framesPerCommand + this.lastTimingDelay))
 				{
 					SetJoypadButtons(this.commandInQueue.p1, 1, true);
 					this.currentFrameCounter = 0;
-					this.commandInQueueAvailable = false;
 					this.sendStateToServer = true;
 				}
+			}
+		}
+
+		private int CalculateMoveStart()
+		{
+			if (this.commandInQueue.timing.ToLowerInvariant().Equals("low"))
+			{
+				return 5;
+			}
+			else if (this.commandInQueue.timing.ToLowerInvariant().Equals("medium"))
+			{
+				return 11;
+			}
+			else {
+				return 18;
 			}
 		}
 
@@ -817,7 +845,7 @@ namespace BizHawk.Client.EmuHawk
 		private void HasOpponentStartedAnAttack()
 		{
 
-			if(!this.waitingForOpponentActionToEnd && this.IsOpponentMovingInMemory())
+			if(!this.waitingForOpponentActionToEnd && this.IsOpponentMovingInMemory()&& !this.IsMacPressingButtons())
 			{
 				this.waitingForOpponentActionToEnd = true;
 				this.sendStateToServer = true;

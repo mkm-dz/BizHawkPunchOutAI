@@ -794,7 +794,7 @@ namespace BizHawk.Client.EmuHawk
 				if (this.currentFrameCounter == this.lastTimingDelay)
 				{
 					string buttonsPressed = SetJoypadButtons(this.commandInQueue.p1, 1);
-					buttonsPressed +=String.Format(" {0} f.", this.lastTimingDelay);
+					buttonsPressed += String.Format(" {0} f.", this.lastTimingDelay);
 					GlobalWin.OSD.ClearGUIText();
 					GlobalWin.OSD.AddMessageForTime(buttonsPressed, _OSDMessageTimeInSeconds);
 					this.commandInQueueAvailable = false;
@@ -821,7 +821,8 @@ namespace BizHawk.Client.EmuHawk
 			{
 				return 11;
 			}
-			else {
+			else
+			{
 				return 18;
 			}
 		}
@@ -832,7 +833,7 @@ namespace BizHawk.Client.EmuHawk
 		/// <returns>true if buttons are being pressed false otherwise</returns>
 		private bool IsMacPressingButtons()
 		{
-			if(this.currentFrameCounter > 0 && this.currentFrameCounter <= (this.framesPerCommand+lastTimingDelay))
+			if (this.currentFrameCounter > 0 && this.currentFrameCounter <= (this.framesPerCommand + lastTimingDelay))
 			{
 				return true;
 			}
@@ -846,13 +847,13 @@ namespace BizHawk.Client.EmuHawk
 		private void HasOpponentStartedAnAttack()
 		{
 
-			if(!this.waitingForOpponentActionToEnd && this.IsOpponentMovingInMemory() && !this.IsMacPressingButtons())
+			if (!this.waitingForOpponentActionToEnd && this.IsOpponentMovingInMemory() && !this.IsMacPressingButtons())
 			{
 				this.waitingForOpponentActionToEnd = true;
 				this.sendStateToServer = true;
 			}
 
-			if(this.waitingForOpponentActionToEnd && !this.IsOpponentMovingInMemory())
+			if (this.waitingForOpponentActionToEnd && !this.IsOpponentMovingInMemory())
 			{
 				this.waitingForOpponentActionToEnd = false;
 			}
@@ -863,7 +864,7 @@ namespace BizHawk.Client.EmuHawk
 		/// </summary>
 		private void IsMacIdle()
 		{
-			if(!this.IsMacPressingButtons() && !this.IsMacMovingOnMemory()
+			if (!this.IsMacPressingButtons() && !this.IsMacMovingOnMemory()
 				 && !this.IsOpponentMovingInMemory() && this.IsRoundStarted()
 				 && this.sendStateToServer == false)
 			{

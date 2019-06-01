@@ -866,7 +866,7 @@ namespace BizHawk.Client.EmuHawk
 		{
 			if (!this.IsMacPressingButtons() && !this.IsMacMovingOnMemory()
 				 && !this.IsOpponentMovingInMemory() && this.IsRoundStarted()
-				 && this.sendStateToServer == false)
+				 && this.commandInQueueAvailable == false)
 			{
 				this.sendStateToServer = true;
 			}

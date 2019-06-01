@@ -798,7 +798,6 @@ namespace BizHawk.Client.EmuHawk
 					buttonsPressed += String.Format(" {0} f.", this.lastTimingDelay);
 					GlobalWin.OSD.ClearGUIText();
 					GlobalWin.OSD.AddMessageForTime(buttonsPressed, _OSDMessageTimeInSeconds);
-					this.commandInQueueAvailable = false;
 				}
 
 				this.currentFrameCounter++;
@@ -808,6 +807,7 @@ namespace BizHawk.Client.EmuHawk
 					this.currentFrameCounter = 0;
 					this.lastTimingDelay = 0;
 					this.sendStateToServer = true;
+					this.commandInQueueAvailable = false;
 				}
 			}
 		}
@@ -848,7 +848,8 @@ namespace BizHawk.Client.EmuHawk
 		private void HasOpponentStartedAnAttack()
 		{
 
-			if (!this.waitingForOpponentActionToEnd && this.IsOpponentMovingInMemory() && !this.IsMacPressingButtons())
+			if (!this.waitingForOpponentActionToEnd && this.IsOpponentMovingInMemory()
+					&& !this.IsMacPressingButtons() && this.commandInQueueAvailable == false)
 			{
 				this.waitingForOpponentActionToEnd = true;
 				this.sendStateToServer = true;

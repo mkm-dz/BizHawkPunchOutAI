@@ -959,7 +959,28 @@ namespace BizHawk.Client.EmuHawk
 			GlobalWin.OSD.AddMessage("Screenshot (client) saved to clipboard.");
 		}
 
+		/// <summary>
+		/// Takes a screenshot
+		/// </summary>
 		public void TakeScreenshot()
+		{
+			this.TakeScreenshot(this.CalculateName());
+		}
+
+		/// <summary>
+		/// Takes a screenshot and adds a debugging message to it.
+		/// </summary>
+		/// <param name="message"></param>
+		public void TakeScreenshotWithMessage(string message)
+		{
+			this.TakeScreenshotWithMessage(this.CalculateName(), message);
+		}
+
+		/// <summary>
+		/// Calculates the name and path that a screenshot will have
+		/// </summary>
+		/// <returns></returns>
+		private string CalculateName()
 		{
 			string fmt = "{0}.{1:yyyy-MM-dd HH.mm.ss}{2}.png";
 			string prefix = PathManager.ScreenshotPrefix(Global.Game);
@@ -990,7 +1011,7 @@ namespace BizHawk.Client.EmuHawk
 				fname = string.Format(fmt, prefix, ts, sequence);
 			}
 
-			TakeScreenshot(fname);
+			return fname;
 		}
 
 		public void TakeScreenshot(string path)
@@ -1005,6 +1026,41 @@ namespace BizHawk.Client.EmuHawk
 			{
 				using (var img = bb.ToSysdrawingBitmap())
 				{
+					img.Save(fi.FullName, ImageFormat.Png);
+				}
+			}
+
+			/*
+			using (var fs = new FileStream(path + "_test.bmp", FileMode.OpenOrCreate, FileAccess.Write))
+				QuickBmpFile.Save(Emulator.VideoProvider(), fs, r.Next(50, 500), r.Next(50, 500));
+			*/
+			GlobalWin.OSD.AddMessage(fi.Name + " saved.");
+		}
+
+		/// <summary>
+		/// Takes a screenshot and save it to the specified path with the associated message
+		/// </summary>
+		/// <param name="path">The path where the screenshot will be stored.</param>
+		/// <param name="message">THe message that will be added to the screenshot</param>
+		public void TakeScreenshotWithMessage(string path, string message)
+		{
+			var fi = new FileInfo(path);
+			if (fi.Directory != null && !fi.Directory.Exists)
+			{
+				fi.Directory.Create();
+			}
+
+			using (var bb = Global.Config.Screenshot_CaptureOSD ? CaptureOSD() : MakeScreenshotImage())
+			{
+				using (var img = bb.ToSysdrawingBitmap())
+				{
+					Graphics g = Graphics.FromImage(img);
+					RectangleF rectf = new RectangleF(10, 100, 260, 120);
+					g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+					g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+					g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+					g.DrawString(message, new Font("Tahoma", 5), Brushes.White, rectf);
+					g.Flush();
 					img.Save(fi.FullName, ImageFormat.Png);
 				}
 			}

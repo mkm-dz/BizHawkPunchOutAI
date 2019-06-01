@@ -25,8 +25,8 @@ namespace BizHawk.Client.EmuHawk
 	public partial class PunchOutBot : ToolFormBase, IToolFormAutoConfig
 	{
 		private const string DialogTitle = "PunchOut Bot";
-		
-		private string _currentFileName = "";
+
+		private string _currentFileName = string.Empty;
 		private const string serverAddress = "127.0.0.1";
 		private const int clientPort = 9999;
 		private const int serverPort = 9998;
@@ -80,7 +80,7 @@ namespace BizHawk.Client.EmuHawk
 		private float _winsToLosses = 0;
 		private float _p2_winsToLosses = 0;
 		private int _totalGames = 0;
-		private int _OSDMessageTimeInSeconds = 150;
+		private int _OSDMessageTimeInSeconds = 6;
 		private int _post_round_wait_time = 0;
 		private bool sendStateToServer = false;
 		public bool game_in_progress = false;
@@ -805,6 +805,7 @@ namespace BizHawk.Client.EmuHawk
 				{
 					SetJoypadButtons(this.commandInQueue.p1, 1, true);
 					this.currentFrameCounter = 0;
+					this.lastTimingDelay = 0;
 					this.sendStateToServer = true;
 				}
 			}
@@ -831,7 +832,7 @@ namespace BizHawk.Client.EmuHawk
 		/// <returns>true if buttons are being pressed false otherwise</returns>
 		private bool IsMacPressingButtons()
 		{
-			if(this.currentFrameCounter > 0 && this.currentFrameCounter <= this.framesPerCommand)
+			if(this.currentFrameCounter > 0 && this.currentFrameCounter <= (this.framesPerCommand+lastTimingDelay))
 			{
 				return true;
 			}
@@ -845,7 +846,7 @@ namespace BizHawk.Client.EmuHawk
 		private void HasOpponentStartedAnAttack()
 		{
 
-			if(!this.waitingForOpponentActionToEnd && this.IsOpponentMovingInMemory()&& !this.IsMacPressingButtons())
+			if(!this.waitingForOpponentActionToEnd && this.IsOpponentMovingInMemory() && !this.IsMacPressingButtons())
 			{
 				this.waitingForOpponentActionToEnd = true;
 				this.sendStateToServer = true;
@@ -862,7 +863,9 @@ namespace BizHawk.Client.EmuHawk
 		/// </summary>
 		private void IsMacIdle()
 		{
-			if(!this.IsMacPressingButtons() && !this.IsMacMovingOnMemory())
+			if(!this.IsMacPressingButtons() && !this.IsMacMovingOnMemory()
+				 && !this.IsOpponentMovingInMemory() && this.IsRoundStarted()
+				 && this.sendStateToServer == false)
 			{
 				this.sendStateToServer = true;
 			}

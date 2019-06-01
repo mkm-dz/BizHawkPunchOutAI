@@ -760,6 +760,7 @@ namespace BizHawk.Client.EmuHawk
 			if (this.commandInQueueAvailable && this.commandInQueue.type == "resume")
 			{
 				GlobalWin.MainForm.UnpauseEmulator();
+				this.commandInQueueAvailable = false;
 			}
 		}
 

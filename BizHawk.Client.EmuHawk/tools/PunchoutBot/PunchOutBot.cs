@@ -847,12 +847,15 @@ namespace BizHawk.Client.EmuHawk
 		/// </summary>
 		private void HasOpponentStartedAnAttack()
 		{
-
-			if (!this.waitingForOpponentActionToEnd && this.IsOpponentMovingInMemory()
-					&& !this.IsMacPressingButtons() && this.commandInQueueAvailable == false)
+			if (this.IsOpponentMovingInMemory() && this.waitingForOpponentActionToEnd == false)
 			{
 				this.waitingForOpponentActionToEnd = true;
-				this.sendStateToServer = true;
+
+				// We don't want to send an "started attack" when we are in the middle.
+				if (this.commandInQueueAvailable == false && !this.IsMacPressingButtons())
+				{
+					this.sendStateToServer = true;
+				}
 			}
 
 			if (this.waitingForOpponentActionToEnd && !this.IsOpponentMovingInMemory())

@@ -36,6 +36,7 @@ namespace BizHawk.Client.EmuHawk
 		private int lastTimingDelay = 0;
 		private bool waitingForOpponentActionToEnd = false;
 		private bool onReset = false;
+		private int scoreContext = 0;
 
 		private TextInfo capitalize = new CultureInfo("en-US", false).TextInfo;
 
@@ -785,31 +786,55 @@ namespace BizHawk.Client.EmuHawk
 
 		/// <summary>
 		/// Executes Mac moves over an X amount of frames to guarantee the movement execution.
+		/// it also marks the sendToServer flag as true so the execution outcome is reported.
 		/// </summary>
 		private void PressButtonsIfNeeded()
 		{
 			if (this.IsMacPressingButtons())
 			{
-				//Don Flamenco 10 delayed frames
-				// Von Kayzer 18 delayed frames
+				// Each character has different delays to counter their movements.
 				if (this.currentFrameCounter == this.lastTimingDelay)
 				{
 					string buttonsPressed = SetJoypadButtons(this.commandInQueue.p1, 1);
 					buttonsPressed += String.Format(" {0} f.", this.lastTimingDelay);
 					GlobalWin.OSD.ClearGUIText();
 					GlobalWin.OSD.AddMessageForTime(buttonsPressed, _OSDMessageTimeInSeconds);
+					this.scoreContext = this.GetScore();
 				}
 
 				this.currentFrameCounter++;
 				if (this.currentFrameCounter == (this.framesPerCommand + this.lastTimingDelay))
 				{
 					SetJoypadButtons(this.commandInQueue.p1, 1, true);
-					this.currentFrameCounter = 0;
-					this.lastTimingDelay = 0;
-					this.sendStateToServer = true;
-					this.commandInQueueAvailable = false;
+
+					// Mac did the hit
+					if (this.GetScore() - this.scoreContext > 0)
+					{
+						this.ResetContextAfterMacMove();
+					}
+				}
+				else if (this.currentFrameCounter > (this.framesPerCommand + this.lastTimingDelay))
+				{
+					if (this.waitingForOpponentActionToEnd)
+					{
+						// Mac missed but opponent is moving (maybe in the middle of an action)
+						// you need to wait him to stop before reporting back your status
+						return;
+					}
+					else
+					{
+						this.ResetContextAfterMacMove();
+					}
 				}
 			}
+		}
+
+		private void ResetContextAfterMacMove()
+		{
+			this.currentFrameCounter = 0;
+			this.sendStateToServer = true;
+			this.lastTimingDelay = 0;
+			this.commandInQueueAvailable = false;
 		}
 
 		private int CalculateMoveStart()
@@ -829,12 +854,12 @@ namespace BizHawk.Client.EmuHawk
 		}
 
 		/// <summary>
-		/// Is Mac pressing any button
+		/// Is Mac pressing any button or waiting to report the result of an action
 		/// </summary>
 		/// <returns>true if buttons are being pressed false otherwise</returns>
 		private bool IsMacPressingButtons()
 		{
-			if (this.currentFrameCounter > 0 && this.currentFrameCounter <= (this.framesPerCommand + lastTimingDelay))
+			if (this.currentFrameCounter > 0)
 			{
 				return true;
 			}

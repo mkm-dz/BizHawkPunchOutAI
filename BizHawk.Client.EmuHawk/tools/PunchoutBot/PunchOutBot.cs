@@ -30,6 +30,8 @@ namespace BizHawk.Client.EmuHawk
 		private const string serverAddress = "127.0.0.1";
 		private const int clientPort = 9999;
 		private const int serverPort = 9998;
+		private string _trigger = String.Empty;
+		private bool _allowScreenshots = false;
 
 		private int framesPerCommand = 50;
 		private int currentFrameCounter = 0;
@@ -224,7 +226,10 @@ namespace BizHawk.Client.EmuHawk
 
 		public int CanThrowPunches()
 		{
-			return _currentDomain.PeekByte(0x00BC);
+			if(_currentDomain.PeekByte(0x00BC) == 0	|| _currentDomain.PeekByte(0x0328) > 0)
+				return 0;
+			else
+				return 1;
 		}
 
 		public int GetStars()
@@ -698,6 +703,7 @@ namespace BizHawk.Client.EmuHawk
 				// send status to server.
 				GameState gs = GetCurrentState();
 				this.SendEmulatorGameStateToController(gs);
+				this._trigger = String.Empty;
 			}
 
 		}
@@ -708,6 +714,7 @@ namespace BizHawk.Client.EmuHawk
 			{
 				// if the round is over we clear any message waiting on the agent.
 				this.sendStateToServer = true;
+				this._trigger += ", RoundOver";
 			}
 
 			if (this.commandInQueueAvailable && this.commandInQueue.type == "reset")
@@ -716,6 +723,7 @@ namespace BizHawk.Client.EmuHawk
 
 				// This is only for letting the server know we executed the command.
 				this.sendStateToServer = true;
+				this._trigger += ", ReceivedResetCommand";
 				if (_isBotting)
 				{
 					try
@@ -765,6 +773,25 @@ namespace BizHawk.Client.EmuHawk
 			}
 		}
 
+		private void TakeScreenshot(GameState state)
+		{
+			if (!this._allowScreenshots)
+			{
+				return;
+			}
+
+			string message = String.Empty;
+			if (this._trigger.Contains("FinishedPressingButtons"))
+			{
+				message = JsonConvert.SerializeObject(this.commandInQueue);
+			}
+			else
+			{
+				message = JsonConvert.SerializeObject(state);
+			}
+			GlobalWin.MainForm.TakeScreenshotWithMessage(String.Format("{0}\n\r{1}", this._trigger, message));
+		}
+
 		/// <summary>
 		/// Verifies if Mac is required to execute an action or if any button pressing is needed
 		/// </summary>
@@ -811,6 +838,7 @@ namespace BizHawk.Client.EmuHawk
 					if (this.GetScore() - this.scoreContext > 0)
 					{
 						this.ResetContextAfterMacMove();
+						this._trigger += ", FinishedPressingButtons Mac Hit";
 					}
 				}
 				else if (this.currentFrameCounter > (this.framesPerCommand + this.lastTimingDelay))
@@ -824,6 +852,7 @@ namespace BizHawk.Client.EmuHawk
 					else
 					{
 						this.ResetContextAfterMacMove();
+						this._trigger += ", FinishedPressingButtons Mac missed Hit";
 					}
 				}
 			}
@@ -880,6 +909,7 @@ namespace BizHawk.Client.EmuHawk
 				if (this.commandInQueueAvailable == false && !this.IsMacPressingButtons())
 				{
 					this.sendStateToServer = true;
+					this._trigger += ", OpponentStartedAttack";
 				}
 			}
 
@@ -894,16 +924,18 @@ namespace BizHawk.Client.EmuHawk
 		/// </summary>
 		private void IsMacIdle()
 		{
-			if (!this.IsOpponentMovingInMemory() && this.CanThrowPunches() == 1 && 
-				this.commandInQueueAvailable == false && !this.IsMacPressingButtons() &&
-				this.IsRoundStarted() && !this.IsMacMovingOnMemory())
+			if (!this.IsOpponentMovingInMemory() && this.CanThrowPunches() == 1 &&
+	this.commandInQueueAvailable == false && !this.IsMacPressingButtons() &&
+	this.IsRoundStarted() && !this.IsMacMovingOnMemory())
 			{
 				this.sendStateToServer = true;
+				this._trigger += ", MacIsIdle";
 			}
 		}
 
 		private async Task<ControllerCommand> SendEmulatorGameStateToController(GameState state, int retry = 0, bool forceResume = false)
 		{
+			this.TakeScreenshot(state);
 			ControllerCommand cc = new ControllerCommand();
 			TcpClient cl = null;
 			try

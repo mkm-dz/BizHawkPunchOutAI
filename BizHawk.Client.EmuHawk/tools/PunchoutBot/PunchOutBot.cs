@@ -234,6 +234,15 @@ namespace BizHawk.Client.EmuHawk
 				return 1;
 		}
 
+		public int IsBlinkingPink()
+		{
+			// 048E Seems to track if you Mac is blinking pink
+			if (_currentDomain.PeekByte(0x048E) == 143)
+				return 0;
+			else
+				return 1;
+		}
+
 		public int GetStars()
 		{
 			return _currentDomain.PeekByte(0x0342);
@@ -421,7 +430,7 @@ namespace BizHawk.Client.EmuHawk
 
 			public int actionTimer { get; set; }
 
-			public int canThrowPunches { get; set; }
+			public int blinkingPink { get; set; }
 
 			public int stars { get; set; }
 
@@ -450,7 +459,7 @@ namespace BizHawk.Client.EmuHawk
 			p1.character = -1;
 			p1.hearts = this.GetHearts();
 			p1.score = this.GetScore();
-			p1.canThrowPunches = this.CanThrowPunches();
+			p1.blinkingPink = this.IsBlinkingPink();
 			p1.stars = this.GetStars();
 
 			p2.health = this.GetHealthP2();
@@ -458,7 +467,7 @@ namespace BizHawk.Client.EmuHawk
 			p2.buttons = this.GetJoypadButtons(2);
 			p2.actionTimer = this.GetOpponentActionTimer();
 			p2.character = this.GetOpponentId();
-			p2.canThrowPunches = 0;
+			p2.blinkingPink = 0;
 			p2.secondaryAction = this.GetOpponentSecondaryAction();
 			p2.stars = 0;
 

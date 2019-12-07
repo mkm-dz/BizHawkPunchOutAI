@@ -33,7 +33,7 @@ namespace BizHawk.Client.EmuHawk
 		private string _trigger = String.Empty;
 		private bool _allowScreenshots = false;
 
-		private int framesPerCommand = 50;
+		private int framesPerCommand = 40;
 		private int currentFrameCounter = 0;
 		private int lastTimingDelay = 0;
 		private bool waitingForOpponentActionToEnd = false;
@@ -226,7 +226,9 @@ namespace BizHawk.Client.EmuHawk
 
 		public int CanThrowPunches()
 		{
-			if(_currentDomain.PeekByte(0x00BC) == 0	|| _currentDomain.PeekByte(0x0328) > 0)
+			// 00BC Seems to track if you can throw punches or if you are blocked by an action
+			// does not include  blinking pink
+			if (_currentDomain.PeekByte(0x00BC) == 0)
 				return 0;
 			else
 				return 1;
@@ -843,17 +845,8 @@ namespace BizHawk.Client.EmuHawk
 				}
 				else if (this.currentFrameCounter > (this.framesPerCommand + this.lastTimingDelay))
 				{
-					if (this.waitingForOpponentActionToEnd)
-					{
-						// Mac missed but opponent is moving (maybe in the middle of an action)
-						// you need to wait him to stop before reporting back your status
-						return;
-					}
-					else
-					{
-						this.ResetContextAfterMacMove();
-						this._trigger += ", FinishedPressingButtons Mac missed Hit";
-					}
+					this.ResetContextAfterMacMove();
+					this._trigger += ", FinishedPressingButtons Mac missed Hit";
 				}
 			}
 		}
@@ -924,9 +917,8 @@ namespace BizHawk.Client.EmuHawk
 		/// </summary>
 		private void IsMacIdle()
 		{
-			if (!this.IsOpponentMovingInMemory() && this.CanThrowPunches() == 1 &&
-	this.commandInQueueAvailable == false && !this.IsMacPressingButtons() &&
-	this.IsRoundStarted() && !this.IsMacMovingOnMemory())
+		if (this.CanThrowPunches() == 1 &&	this.commandInQueueAvailable == false && !this.IsMacPressingButtons() && 
+				this.IsRoundStarted() && !this.IsMacMovingOnMemory())
 			{
 				this.sendStateToServer = true;
 				this._trigger += ", MacIsIdle";

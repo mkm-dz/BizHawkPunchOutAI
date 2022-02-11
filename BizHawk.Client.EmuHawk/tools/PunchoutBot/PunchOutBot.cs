@@ -36,6 +36,7 @@ namespace BizHawk.Client.EmuHawk
 		private int framesPerCommand = 40;
 		private int currentFrameCounter = 0;
 		private int lastTimingDelay = 0;
+		private bool inMainLoop = false;
 		private bool waitingForOpponentActionToEnd = false;
 		private bool onReset = false;
 		private int scoreContext = 0;
@@ -236,11 +237,13 @@ namespace BizHawk.Client.EmuHawk
 
 		public int IsBlinkingPink()
 		{
-			// 048E Seems to track if you Mac is blinking pink
-			if (_currentDomain.PeekByte(0x048E) == 143)
-				return 0;
-			else
+			// 048E Seems to track if you Mac is blinking pink but it also returns true when mac is hit.
+			if(this.GetHearts() == 0)
+			{
 				return 1;
+			}
+
+			return 0;
 		}
 
 		public int GetStars()
@@ -269,11 +272,28 @@ namespace BizHawk.Client.EmuHawk
 			return false;
 		}
 
+		public int GetBerserkerAction()
+		{
+			return _currentDomain.PeekByte(0x0035);
+		}
+
+		public bool IsMacInNeutralPosition()
+		{
+			// [Not 100% confirmed] But 1 seems to be standing and 2 standing in pink. Similar to the previous
+			// one.
+			if (_currentDomain.PeekByte(0x0050) == 1 || _currentDomain.PeekByte(0x0050) == 2)
+			{
+				return true;
+			}
+
+			return false;
+		}
+
 		private bool IsRoundOver()
 		{
 			if (!this.onReset)
 			{
-				return GetHealthP1() <= 0 || GetHealthP2() <= 0 || _currentDomain.PeekByte(0x0004) != 255;
+				return (GetHealthP1() <= 0 || GetHealthP2() <= 0 )|| _currentDomain.PeekByte(0x0004) != 255;
 			}
 			else
 			{
@@ -432,6 +452,8 @@ namespace BizHawk.Client.EmuHawk
 
 			public int blinkingPink { get; set; }
 
+			public int bersekerAction { get; set; }
+
 			public int stars { get; set; }
 
 		}
@@ -460,6 +482,7 @@ namespace BizHawk.Client.EmuHawk
 			p1.hearts = this.GetHearts();
 			p1.score = this.GetScore();
 			p1.blinkingPink = this.IsBlinkingPink();
+			p1.bersekerAction= 0;
 			p1.stars = this.GetStars();
 
 			p2.health = this.GetHealthP2();
@@ -469,6 +492,7 @@ namespace BizHawk.Client.EmuHawk
 			p2.character = this.GetOpponentId();
 			p2.blinkingPink = 0;
 			p2.secondaryAction = this.GetOpponentSecondaryAction();
+			p2.bersekerAction = this.GetBerserkerAction();
 			p2.stars = 0;
 
 			gs.p1 = p1;
@@ -700,14 +724,17 @@ namespace BizHawk.Client.EmuHawk
 			// Resume a paused game has priority
 			this.ResumeGameIfNeeded();
 
-			// Execute any action pending on Mac side
-			this.ExecuteMacActionIfNeeded();
+			this.InitializeMainLoop();
+
+			this.HandleButtons();
 
 			// We need to check if the opponent is attacking us.
-			this.HasOpponentStartedAnAttack();
+			//this.HasOpponentStartedAnAttack();
 
 			// If mac is idle we need to notify the server (who is prepared to listen everytime we send the state)
-			this.IsMacIdle();
+			// this.IsMacIdle();
+
+			this.ResetLoopContext();
 
 			if (this.sendStateToServer)
 			{
@@ -806,66 +833,52 @@ namespace BizHawk.Client.EmuHawk
 		/// <summary>
 		/// Verifies if Mac is required to execute an action or if any button pressing is needed
 		/// </summary>
-		private void ExecuteMacActionIfNeeded()
+		private void InitializeMainLoop()
 		{
 			// After one action we do not need the reset flag
 			this.onReset = false;
 
-			// If we have a pending command and we are not pressing the buttons or moving, execute movement.
-			if (this.commandInQueueAvailable && this.commandInQueue.type == "buttons"
-				&& !this.IsMacPressingButtons() && !this.IsMacMovingOnMemory())
+			if (this.inMainLoop)
 			{
-				this.lastTimingDelay = this.CalculateMoveStart();
-				this.currentFrameCounter = 1;
+				this.currentFrameCounter++;
 			}
 
-			this.PressButtonsIfNeeded();
+			// If we have a pending command and we are not pressing the buttons, execute movement.
+			if (this.commandInQueueAvailable && this.commandInQueue.type == "buttons")
+			{
+				this.commandInQueueAvailable = false;
+				this.inMainLoop = true;
+				this.lastTimingDelay = this.CalculateMoveStart();
+			}
 		}
 
 		/// <summary>
 		/// Executes Mac moves over an X amount of frames to guarantee the movement execution.
 		/// it also marks the sendToServer flag as true so the execution outcome is reported.
 		/// </summary>
-		private void PressButtonsIfNeeded()
+		private void HandleButtons()
 		{
-			if (this.IsMacPressingButtons())
+			if ((this.currentFrameCounter == (this.framesPerCommand + this.lastTimingDelay)) && this.inMainLoop)
 			{
-				// Each character has different delays to counter their movements.
-				if (this.currentFrameCounter == this.lastTimingDelay)
-				{
-					string buttonsPressed = SetJoypadButtons(this.commandInQueue.p1, 1);
-					buttonsPressed += String.Format(" {0} f.", this.lastTimingDelay);
-					GlobalWin.OSD.ClearGUIText();
-					GlobalWin.OSD.AddMessageForTime(buttonsPressed, _OSDMessageTimeInSeconds);
-					this.scoreContext = this.GetScore();
-				}
-
-				this.currentFrameCounter++;
-				if (this.currentFrameCounter == (this.framesPerCommand + this.lastTimingDelay))
-				{
-					SetJoypadButtons(this.commandInQueue.p1, 1, true);
-
-					// Mac did the hit
-					if (this.GetScore() - this.scoreContext > 0)
-					{
-						this.ResetContextAfterMacMove();
-						this._trigger += ", FinishedPressingButtons Mac Hit";
-					}
-				}
-				else if (this.currentFrameCounter > (this.framesPerCommand + this.lastTimingDelay))
-				{
-					this.ResetContextAfterMacMove();
-					this._trigger += ", FinishedPressingButtons Mac missed Hit";
-				}
+				string buttonsPressed = SetJoypadButtons(this.commandInQueue.p1, 1);
+				buttonsPressed += String.Format(" {0} f.", this.lastTimingDelay);
+				GlobalWin.OSD.ClearGUIText();
+				GlobalWin.OSD.AddMessageForTime(buttonsPressed, _OSDMessageTimeInSeconds);
+				this.scoreContext = this.GetScore();
 			}
 		}
 
-		private void ResetContextAfterMacMove()
+		private void ResetLoopContext()
 		{
-			this.currentFrameCounter = 0;
-			this.sendStateToServer = true;
-			this.lastTimingDelay = 0;
-			this.commandInQueueAvailable = false;
+			if (this.currentFrameCounter > (this.framesPerCommand + this.lastTimingDelay) && this.inMainLoop)
+			{
+				this.currentFrameCounter = 0;
+				this.inMainLoop = false;
+				this.sendStateToServer = true;
+				this.lastTimingDelay = 0;
+				SetJoypadButtons(this.commandInQueue.p1, 1, true);
+				this._trigger += ", FinishedPressingButtons";
+			}
 		}
 
 		private int CalculateMoveStart()

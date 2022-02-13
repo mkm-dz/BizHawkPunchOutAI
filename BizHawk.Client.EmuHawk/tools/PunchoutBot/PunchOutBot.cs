@@ -741,11 +741,16 @@ namespace BizHawk.Client.EmuHawk
 
 			this.HandleButtons();
 
+			// [** Reviewing this logic **]
+			// Reason is that currently Mac is "dumb", meaning it only reacts to server order and then returns the state.
+			// This is in order to preserve (previous_state, next_state) dupla. Otherwise states need to be ordered.
+
 			// We need to check if the opponent is attacking us.
-			this.HasOpponentStartedAnAttack();
+			//this.HasOpponentStartedAnAttack();
 
 			// If mac is idle we need to notify the server (who is prepared to listen everytime we send the state)
 			// this.IsMacIdle();
+			// [** End Reviewing this logic **]
 
 			this.ResetLoopContext();
 

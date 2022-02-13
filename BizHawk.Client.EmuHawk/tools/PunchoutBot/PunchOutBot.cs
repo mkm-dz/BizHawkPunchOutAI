@@ -202,12 +202,28 @@ namespace BizHawk.Client.EmuHawk
 
 		public int GetOpponentAction()
 		{
-			return _currentDomain.PeekByte(0x003A);
-		}
+			// This is how I think it is working
+			// | 0x0039 | 0x003A | 0x003B  | 0x003C  |
+			// | Counter| Offset | Ind.Ref1|Ind.Ref2 |
+			//
+			// Counter holds a value that when 0 (or other TBD values for specific characters) executes the action
+			// Offset holds a value that offsets Ind.Ref1
+			// Ind.Ref Hold references to the address who has the actual value of the actions
+			//    In this case string memory address =  [Ind.Ref2] + [Ind.Ref1 + Offset]
+			//    e.g 
+			// | 0x0039 | 0x003A | 0x003B | 0x003C |
+			// |    0   |    3   |   94   |   96   |
+			// Memoery address that contains the movement will be @ 0x9499
+			int firstAddress = _currentDomain.PeekByte(0x003C);
+			int secondAddress = _currentDomain.PeekByte(0x003B);
+			int offset = _currentDomain.PeekByte(0x003A);
 
-		public int GetOpponentSecondaryAction()
-		{
-			return _currentDomain.PeekByte(0x003B);
+			secondAddress += offset;
+			secondAddress += 1;
+
+			string fullAddress = String.Format("0x{0}{1}", firstAddress.ToString("X2"), secondAddress.ToString("X2"));
+			long actualAddress = Convert.ToInt64(fullAddress, 16);
+			return _currentDomain.PeekByte(actualAddress);
 		}
 
 		public int GetOpponentActionTimer()
@@ -446,8 +462,6 @@ namespace BizHawk.Client.EmuHawk
 
 			public int action { get; set; }
 
-			public int secondaryAction { get; set; }
-
 			public int actionTimer { get; set; }
 
 			public int blinkingPink { get; set; }
@@ -491,7 +505,6 @@ namespace BizHawk.Client.EmuHawk
 			p2.actionTimer = this.GetOpponentActionTimer();
 			p2.character = this.GetOpponentId();
 			p2.blinkingPink = 0;
-			p2.secondaryAction = this.GetOpponentSecondaryAction();
 			p2.bersekerAction = this.GetBerserkerAction();
 			p2.stars = 0;
 
@@ -527,7 +540,7 @@ namespace BizHawk.Client.EmuHawk
 			if (_currentDomain == null ||
 				MemoryDomains.Contains(_currentDomain))
 			{
-				_currentDomain = MemoryDomains.MainMemory;
+				_currentDomain = MemoryDomains.SystemBus;
 				_bigEndian = _currentDomain.EndianType == MemoryDomain.Endian.Big;
 				_dataSize = 1;
 			}
@@ -729,7 +742,7 @@ namespace BizHawk.Client.EmuHawk
 			this.HandleButtons();
 
 			// We need to check if the opponent is attacking us.
-			//this.HasOpponentStartedAnAttack();
+			this.HasOpponentStartedAnAttack();
 
 			// If mac is idle we need to notify the server (who is prepared to listen everytime we send the state)
 			// this.IsMacIdle();

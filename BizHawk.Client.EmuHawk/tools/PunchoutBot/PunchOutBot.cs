@@ -212,8 +212,8 @@ namespace BizHawk.Client.EmuHawk
 			//    In this case string memory address =  [Ind.Ref2] + [Ind.Ref1 + Offset]
 			//    e.g 
 			// | 0x0039 | 0x003A | 0x003B | 0x003C |
-			// |    0   |    3   |   94   |   96   |
-			// Memoery address that contains the movement will be @ 0x9499
+			// |    0   |    3   |   96   |   94   |
+			// Memory address that contains the movement will be @ 0x9499
 			int firstAddress = _currentDomain.PeekByte(0x003C);
 			int secondAddress = _currentDomain.PeekByte(0x003B);
 			int offset = _currentDomain.PeekByte(0x003A);

@@ -975,7 +975,6 @@ namespace BizHawk.Client.EmuHawk
 				cl = new TcpClient(PunchOutBot.serverAddress, PunchOutBot.clientPort);
 				cl.NoDelay = true; // Disable Nagle's algorithm for lower latency
 				NetworkStream stream = cl.GetStream();
-				byte[] bytes = new byte[1024];
 				string data = JsonConvert.SerializeObject(state);
 
 				byte[] msg = Encoding.UTF8.GetBytes(data);

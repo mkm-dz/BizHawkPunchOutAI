@@ -1012,7 +1012,7 @@ namespace BizHawk.Client.EmuHawk
 					EnsureConnected();
 				}
 				
-				string data = JsonConvert.SerializeObject(state, _jsonSettings);
+				string data = JsonConvert.SerializeObject(state, _jsonSettings) + "\n";
 				byte[] msg = Encoding.UTF8.GetBytes(data);
 				await _persistentStream.WriteAsync(msg, 0, msg.Length);
 

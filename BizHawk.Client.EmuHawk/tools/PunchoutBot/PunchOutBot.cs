@@ -1148,6 +1148,7 @@ namespace BizHawk.Client.EmuHawk
 	class TcpServer
 	{
 		private TcpListener _server;
+		private volatile bool _running = true;
 		public string commandInQueue = null;
 		public Boolean commandInQueueAvailable = false;
 
@@ -1165,7 +1166,7 @@ namespace BizHawk.Client.EmuHawk
 
 		public void LoopClients()
 		{
-			while (true)
+			while (_running)
 			{
 				try
 				{
@@ -1175,43 +1176,62 @@ namespace BizHawk.Client.EmuHawk
 					newClient.ReceiveBufferSize = 4096;
 
 					// client found.
-					// create a thread to handle communication
-					HandleClient(newClient);
+					// create a thread to handle persistent connection
+					Thread clientThread = new Thread(() => HandleClientPersistent(newClient));
+					clientThread.IsBackground = true;
+					clientThread.Start();
+				}
+				catch (SocketException)
+				{
+					// Server stopped
+					break;
 				}
 				catch (Exception e)
 				{
-					throw e;
+					if (_running) throw e;
 				}
 			}
 		}
 
-		public void HandleClient(object obj)
+		public void HandleClientPersistent(TcpClient client)
 		{
-			// retrieve client from parameter passed to thread
-			TcpClient client = (TcpClient)obj;
-
-			// sets two streams
 			StreamReader sReader = new StreamReader(client.GetStream(), Encoding.UTF8);
 
-			// you could use the NetworkStream to read and write, 
-			// but there is no forcing flush, even when requested
-
-			StringBuilder sData = new StringBuilder();
-
-			do
+			try
 			{
-				// reads from stream
-				sData.Append(sReader.ReadLine());
+				while (_running && client.Connected)
+				{
+					// ReadLine blocks until a full line is received (delimited by \n)
+					string line = sReader.ReadLine();
+					if (line == null)
+					{
+						// Client disconnected
+						break;
+					}
+					
+					if (!string.IsNullOrWhiteSpace(line))
+					{
+						this.onMessageReceived(line);
+					}
+				}
 			}
-			while (client.Available > 0);
-
-			// shows content on the console.
-			//Console.WriteLine("Client &gt; " + sData);
-			this.onMessageReceived(sData.ToString());
+			catch (IOException)
+			{
+				// Connection closed
+			}
+			catch (Exception)
+			{
+				// Handle other exceptions silently
+			}
+			finally
+			{
+				try { client.Close(); } catch { }
+			}
 		}
 
 		public void Stop()
 		{
+			_running = false;
 			this._server.Stop();
 		}
 	}

@@ -973,6 +973,7 @@ namespace BizHawk.Client.EmuHawk
 			try
 			{
 				cl = new TcpClient(PunchOutBot.serverAddress, PunchOutBot.clientPort);
+				cl.NoDelay = true; // Disable Nagle's algorithm for lower latency
 				NetworkStream stream = cl.GetStream();
 				byte[] bytes = new byte[1024];
 				string data = JsonConvert.SerializeObject(state);
@@ -1125,6 +1126,8 @@ namespace BizHawk.Client.EmuHawk
 				{
 					// wait for client connection
 					TcpClient newClient = _server.AcceptTcpClient();
+					newClient.NoDelay = true; // Disable Nagle's algorithm for lower latency
+					newClient.ReceiveBufferSize = 4096;
 
 					// client found.
 					// create a thread to handle communication

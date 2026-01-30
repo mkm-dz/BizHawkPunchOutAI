@@ -32,6 +32,7 @@ namespace BizHawk.Client.EmuHawk
 		private const int serverPort = 9998;
 		private string _trigger = String.Empty;
 		private bool _allowScreenshots = false;
+		private static readonly JsonSerializerSettings _jsonSettings = new JsonSerializerSettings();
 
 		private int framesPerCommand = 40;
 		private int currentFrameCounter = 0;
@@ -91,6 +92,11 @@ namespace BizHawk.Client.EmuHawk
 
 		private ILogEntryGenerator _logGenerator;
 		private TcpServer server;
+		
+		// Persistent connection to Python server for state transmission
+		private TcpClient _persistentClient = null;
+		private NetworkStream _persistentStream = null;
+		private readonly object _connectionLock = new object();
 
 		#region Services and Settings
 
@@ -965,20 +971,51 @@ namespace BizHawk.Client.EmuHawk
 			}
 		}
 
+		private void EnsureConnected()
+		{
+			if (_persistentClient == null || !_persistentClient.Connected)
+			{
+				// Clean up old connection if exists
+				if (_persistentClient != null)
+				{
+					try { _persistentClient.Close(); } catch { }
+				}
+				
+				_persistentClient = new TcpClient(PunchOutBot.serverAddress, PunchOutBot.clientPort);
+				_persistentClient.NoDelay = true;
+				_persistentStream = _persistentClient.GetStream();
+			}
+		}
+
+		private void CloseConnection()
+		{
+			if (_persistentStream != null)
+			{
+				try { _persistentStream.Close(); } catch { }
+				_persistentStream = null;
+			}
+			if (_persistentClient != null)
+			{
+				try { _persistentClient.Close(); } catch { }
+				_persistentClient = null;
+			}
+		}
+
 		private async Task<ControllerCommand> SendEmulatorGameStateToController(GameState state, int retry = 0, bool forceResume = false)
 		{
 			this.TakeScreenshot(state);
 			ControllerCommand cc = new ControllerCommand();
-			TcpClient cl = null;
 			try
 			{
-				cl = new TcpClient(PunchOutBot.serverAddress, PunchOutBot.clientPort);
-				NetworkStream stream = cl.GetStream();
-				byte[] bytes = new byte[1024];
-				string data = JsonConvert.SerializeObject(state);
-
+				lock (_connectionLock)
+				{
+					EnsureConnected();
+				}
+				
+				string data = JsonConvert.SerializeObject(state, _jsonSettings) + "\n";
 				byte[] msg = Encoding.UTF8.GetBytes(data);
-				await stream.WriteAsync(msg, 0, msg.Length);
+				await _persistentStream.WriteAsync(msg, 0, msg.Length);
+				await _persistentStream.FlushAsync();
 
 				if (!forceResume)
 				{
@@ -996,21 +1033,29 @@ namespace BizHawk.Client.EmuHawk
 					throw se;
 				}
 
-				if (se.ErrorCode == 10061)
+				if (se.ErrorCode == 10061 || se.ErrorCode == 10053 || se.ErrorCode == 10054)
 				{
-					Thread.Sleep(300);
-					//Console.WriteLine("*****Retrying send command");
+					// Connection refused/reset - close and retry
+					CloseConnection();
+					Thread.Sleep(100);
 					return await this.SendEmulatorGameStateToController(state, ++retry);
 				}
 				cc.type = "__err__" + se.ToString();
 			}
+			catch (IOException ioe)
+			{
+				// Connection lost - close and retry
+				if (retry > 3)
+				{
+					throw ioe;
+				}
+				CloseConnection();
+				Thread.Sleep(100);
+				return await this.SendEmulatorGameStateToController(state, ++retry);
+			}
 			catch (Exception e)
 			{
 				cc.type = "__err__" + e.ToString();
-			}
-			finally
-			{
-				cl.Close();
 			}
 			return cc;
 		}
@@ -1056,6 +1101,7 @@ namespace BizHawk.Client.EmuHawk
 		private void StopBot()
 		{
 			this.server.Stop();
+			CloseConnection(); // Close persistent connection to Python server
 			RunBtn.Visible = true;
 			StopBtn.Visible = false;
 			_isBotting = false;
@@ -1102,6 +1148,7 @@ namespace BizHawk.Client.EmuHawk
 	class TcpServer
 	{
 		private TcpListener _server;
+		private volatile bool _running = true;
 		public string commandInQueue = null;
 		public Boolean commandInQueueAvailable = false;
 
@@ -1119,51 +1166,72 @@ namespace BizHawk.Client.EmuHawk
 
 		public void LoopClients()
 		{
-			while (true)
+			while (_running)
 			{
 				try
 				{
 					// wait for client connection
 					TcpClient newClient = _server.AcceptTcpClient();
+					newClient.NoDelay = true; // Disable Nagle's algorithm for lower latency
+					newClient.ReceiveBufferSize = 4096;
 
 					// client found.
-					// create a thread to handle communication
-					HandleClient(newClient);
+					// create a thread to handle persistent connection
+					Thread clientThread = new Thread(() => HandleClientPersistent(newClient));
+					clientThread.IsBackground = true;
+					clientThread.Start();
+				}
+				catch (SocketException)
+				{
+					// Server stopped
+					break;
 				}
 				catch (Exception e)
 				{
-					throw e;
+					if (_running) throw e;
 				}
 			}
 		}
 
-		public void HandleClient(object obj)
+		public void HandleClientPersistent(TcpClient client)
 		{
-			// retrieve client from parameter passed to thread
-			TcpClient client = (TcpClient)obj;
-
-			// sets two streams
 			StreamReader sReader = new StreamReader(client.GetStream(), Encoding.UTF8);
 
-			// you could use the NetworkStream to read and write, 
-			// but there is no forcing flush, even when requested
-
-			StringBuilder sData = new StringBuilder();
-
-			do
+			try
 			{
-				// reads from stream
-				sData.Append(sReader.ReadLine());
+				while (_running && client.Connected)
+				{
+					// ReadLine blocks until a full line is received (delimited by \n)
+					string line = sReader.ReadLine();
+					if (line == null)
+					{
+						// Client disconnected
+						break;
+					}
+					
+					if (!string.IsNullOrWhiteSpace(line))
+					{
+						this.onMessageReceived(line);
+					}
+				}
 			}
-			while (client.Available > 0);
-
-			// shows content on the console.
-			//Console.WriteLine("Client &gt; " + sData);
-			this.onMessageReceived(sData.ToString());
+			catch (IOException)
+			{
+				// Connection closed
+			}
+			catch (Exception)
+			{
+				// Handle other exceptions silently
+			}
+			finally
+			{
+				try { client.Close(); } catch { }
+			}
 		}
 
 		public void Stop()
 		{
+			_running = false;
 			this._server.Stop();
 		}
 	}

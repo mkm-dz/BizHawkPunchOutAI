@@ -32,6 +32,7 @@ namespace BizHawk.Client.EmuHawk
 		private const int serverPort = 9998;
 		private string _trigger = String.Empty;
 		private bool _allowScreenshots = false;
+		private static readonly JsonSerializerSettings _jsonSettings = new JsonSerializerSettings();
 
 		private int framesPerCommand = 40;
 		private int currentFrameCounter = 0;
@@ -975,7 +976,7 @@ namespace BizHawk.Client.EmuHawk
 				cl = new TcpClient(PunchOutBot.serverAddress, PunchOutBot.clientPort);
 				cl.NoDelay = true; // Disable Nagle's algorithm for lower latency
 				NetworkStream stream = cl.GetStream();
-				string data = JsonConvert.SerializeObject(state);
+				string data = JsonConvert.SerializeObject(state, _jsonSettings);
 
 				byte[] msg = Encoding.UTF8.GetBytes(data);
 				await stream.WriteAsync(msg, 0, msg.Length);

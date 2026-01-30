@@ -1015,6 +1015,7 @@ namespace BizHawk.Client.EmuHawk
 				string data = JsonConvert.SerializeObject(state, _jsonSettings) + "\n";
 				byte[] msg = Encoding.UTF8.GetBytes(data);
 				await _persistentStream.WriteAsync(msg, 0, msg.Length);
+				await _persistentStream.FlushAsync();
 
 				if (!forceResume)
 				{

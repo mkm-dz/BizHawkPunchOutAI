@@ -92,6 +92,11 @@ namespace BizHawk.Client.EmuHawk
 
 		private ILogEntryGenerator _logGenerator;
 		private TcpServer server;
+		
+		// Persistent connection to Python server for state transmission
+		private TcpClient _persistentClient = null;
+		private NetworkStream _persistentStream = null;
+		private readonly object _connectionLock = new object();
 
 		#region Services and Settings
 
@@ -966,20 +971,50 @@ namespace BizHawk.Client.EmuHawk
 			}
 		}
 
+		private void EnsureConnected()
+		{
+			if (_persistentClient == null || !_persistentClient.Connected)
+			{
+				// Clean up old connection if exists
+				if (_persistentClient != null)
+				{
+					try { _persistentClient.Close(); } catch { }
+				}
+				
+				_persistentClient = new TcpClient(PunchOutBot.serverAddress, PunchOutBot.clientPort);
+				_persistentClient.NoDelay = true;
+				_persistentStream = _persistentClient.GetStream();
+			}
+		}
+
+		private void CloseConnection()
+		{
+			if (_persistentStream != null)
+			{
+				try { _persistentStream.Close(); } catch { }
+				_persistentStream = null;
+			}
+			if (_persistentClient != null)
+			{
+				try { _persistentClient.Close(); } catch { }
+				_persistentClient = null;
+			}
+		}
+
 		private async Task<ControllerCommand> SendEmulatorGameStateToController(GameState state, int retry = 0, bool forceResume = false)
 		{
 			this.TakeScreenshot(state);
 			ControllerCommand cc = new ControllerCommand();
-			TcpClient cl = null;
 			try
 			{
-				cl = new TcpClient(PunchOutBot.serverAddress, PunchOutBot.clientPort);
-				cl.NoDelay = true; // Disable Nagle's algorithm for lower latency
-				NetworkStream stream = cl.GetStream();
+				lock (_connectionLock)
+				{
+					EnsureConnected();
+				}
+				
 				string data = JsonConvert.SerializeObject(state, _jsonSettings);
-
 				byte[] msg = Encoding.UTF8.GetBytes(data);
-				await stream.WriteAsync(msg, 0, msg.Length);
+				await _persistentStream.WriteAsync(msg, 0, msg.Length);
 
 				if (!forceResume)
 				{
@@ -997,21 +1032,29 @@ namespace BizHawk.Client.EmuHawk
 					throw se;
 				}
 
-				if (se.ErrorCode == 10061)
+				if (se.ErrorCode == 10061 || se.ErrorCode == 10053 || se.ErrorCode == 10054)
 				{
-					Thread.Sleep(300);
-					//Console.WriteLine("*****Retrying send command");
+					// Connection refused/reset - close and retry
+					CloseConnection();
+					Thread.Sleep(100);
 					return await this.SendEmulatorGameStateToController(state, ++retry);
 				}
 				cc.type = "__err__" + se.ToString();
 			}
+			catch (IOException ioe)
+			{
+				// Connection lost - close and retry
+				if (retry > 3)
+				{
+					throw ioe;
+				}
+				CloseConnection();
+				Thread.Sleep(100);
+				return await this.SendEmulatorGameStateToController(state, ++retry);
+			}
 			catch (Exception e)
 			{
 				cc.type = "__err__" + e.ToString();
-			}
-			finally
-			{
-				cl.Close();
 			}
 			return cc;
 		}
@@ -1057,6 +1100,7 @@ namespace BizHawk.Client.EmuHawk
 		private void StopBot()
 		{
 			this.server.Stop();
+			CloseConnection(); // Close persistent connection to Python server
 			RunBtn.Visible = true;
 			StopBtn.Visible = false;
 			_isBotting = false;

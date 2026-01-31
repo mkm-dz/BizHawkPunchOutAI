@@ -206,36 +206,56 @@ namespace BizHawk.Client.EmuHawk
 			return _currentDomain.PeekByte(0x0398);
 		}
 
-		public int GetOpponentAction()
-		{
-			// This is how I think it is working
-			// | 0x0039 | 0x003A | 0x003B  | 0x003C  |
-			// | Counter| Offset | Ind.Ref1|Ind.Ref2 |
-			//
-			// Counter holds a value that when 0 (or other TBD values for specific characters) executes the action
-			// Offset holds a value that offsets Ind.Ref1
-			// Ind.Ref Hold references to the address who has the actual value of the actions
-			//    In this case string memory address =  [Ind.Ref2] + [Ind.Ref1 + Offset]
-			//    e.g 
-			// | 0x0039 | 0x003A | 0x003B | 0x003C |
-			// |    0   |    3   |   96   |   94   |
-			// Memory address that contains the movement will be @ 0x9499
-			int firstAddress = _currentDomain.PeekByte(0x003C);
-			int secondAddress = _currentDomain.PeekByte(0x003B);
-			int offset = _currentDomain.PeekByte(0x003A);
+		public int GetOpponentState()
+			{
+				// Read opponent state directly from 0x0893
+				return _currentDomain.PeekByte(0x0893);
+			}
 
-			secondAddress += offset;
-			secondAddress += 1;
+			public int GetElapsedMinutes()
+			{
+				return _currentDomain.PeekByte(0x0302);
+			}
 
-			string fullAddress = String.Format("0x{0}{1}", firstAddress.ToString("X2"), secondAddress.ToString("X2"));
-			long actualAddress = Convert.ToInt64(fullAddress, 16);
-			return _currentDomain.PeekByte(actualAddress);
-		}
+			public int GetElapsedSeconds()
+			{
+				return _currentDomain.PeekByte(0x0305);
+			}
 
-		public int GetOpponentActionTimer()
-		{
-			return _currentDomain.PeekByte(0x0039);
-		}
+			public int GetElapsedDecimals()
+			{
+				return _currentDomain.PeekByte(0x0304);
+			}
+
+			public int GetOpponentYPosition()
+			{
+				return _currentDomain.PeekByte(0x020C);
+			}
+
+			public int GetOpponentSpritePos1()
+			{
+				return _currentDomain.PeekByte(0x0288);
+			}
+
+			public int GetOpponentSpritePos2()
+			{
+				return _currentDomain.PeekByte(0x0264);
+			}
+
+			public int GetOpponentNextActionTimer()
+			{
+				return _currentDomain.PeekByte(0x0039);
+			}
+
+			public int GetOpponentNextAction()
+			{
+				return _currentDomain.PeekByte(0x003A);
+			}
+
+			public int GetOpponentActionSet()
+			{
+				return _currentDomain.PeekByte(0x003B);
+			}
 
 		public bool IsRoundStarted()
 		{
@@ -468,8 +488,6 @@ namespace BizHawk.Client.EmuHawk
 
 			public int action { get; set; }
 
-			public int actionTimer { get; set; }
-
 			public int blinkingPink { get; set; }
 
 			public int bersekerAction { get; set; }
@@ -488,8 +506,16 @@ namespace BizHawk.Client.EmuHawk
 			public string result { get; set; }
 			public bool round_started { get; set; }
 			public bool round_over { get; set; }
+			public int elapsed_minutes { get; set; }
+			public int elapsed_seconds { get; set; }
+			public int elapsed_decimals { get; set; }
+			public int opp_y_position { get; set; }
+			public int opp_sprite_pos1 { get; set; }
+			public int opp_sprite_pos2 { get; set; }
+			public int opp_next_action_timer { get; set; }
+			public int opp_next_action { get; set; }
+			public int opp_action_set { get; set; }
 		}
-
 		private GameState GetCurrentState()
 		{
 			PlayerState p1 = new PlayerState();
@@ -502,13 +528,12 @@ namespace BizHawk.Client.EmuHawk
 			p1.hearts = this.GetHearts();
 			p1.score = this.GetScore();
 			p1.blinkingPink = this.IsBlinkingPink();
-			p1.bersekerAction= 0;
+			p1.bersekerAction = 0;
 			p1.stars = this.GetStars();
 
 			p2.health = this.GetHealthP2();
-			p2.action = this.GetOpponentAction();
+			p2.action = this.GetOpponentState();
 			p2.buttons = this.GetJoypadButtons(2);
-			p2.actionTimer = this.GetOpponentActionTimer();
 			p2.character = this.GetOpponentId();
 			p2.blinkingPink = 0;
 			p2.bersekerAction = this.GetBerserkerAction();
@@ -520,6 +545,15 @@ namespace BizHawk.Client.EmuHawk
 			gs.frame = Emulator.Frame;
 			gs.round_started = this.IsRoundStarted();
 			gs.round_over = this.IsRoundOver();
+			gs.elapsed_minutes = this.GetElapsedMinutes();
+			gs.elapsed_seconds = this.GetElapsedSeconds();
+			gs.elapsed_decimals = this.GetElapsedDecimals();
+			gs.opp_y_position = this.GetOpponentYPosition();
+			gs.opp_sprite_pos1 = this.GetOpponentSpritePos1();
+			gs.opp_sprite_pos2 = this.GetOpponentSpritePos2();
+			gs.opp_next_action_timer = this.GetOpponentNextActionTimer();
+			gs.opp_next_action = this.GetOpponentNextAction();
+			gs.opp_action_set = this.GetOpponentActionSet();
 
 			return gs;
 		}

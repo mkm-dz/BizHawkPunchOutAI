@@ -41,6 +41,8 @@ namespace BizHawk.Client.EmuHawk
 		private bool waitingForOpponentActionToEnd = false;
 		private bool onReset = false;
 		private int scoreContext = 0;
+		private bool isDoubleTapDown = false;
+		private int doubleTapPhase = 0;
 
 		private TextInfo capitalize = new CultureInfo("en-US", false).TextInfo;
 
@@ -410,25 +412,19 @@ namespace BizHawk.Client.EmuHawk
 			{
 				foreach (var button in buttons.Keys)
 				{
+					// Skip DoubleTapDown here - it's handled separately in HandleButtons
+					if (button.ToLower() == "doubletapdown")
+					{
+						continue;
+					}
+
 					var invert = false;
 					bool? theValue;
-					var theValueStr = buttons[button].ToString();
+					var buttonValue = buttons[button];
 
-					if (!string.IsNullOrWhiteSpace(theValueStr) && !clearAll)
+					if (!clearAll)
 					{
-						if (theValueStr.ToLower() == "false")
-						{
-							theValue = false;
-						}
-						else if (theValueStr.ToLower() == "true")
-						{
-							theValue = true;
-						}
-						else
-						{
-							invert = true;
-							theValue = null;
-						}
+						theValue = buttonValue;
 					}
 					else
 					{
@@ -916,13 +912,56 @@ namespace BizHawk.Client.EmuHawk
 		/// </summary>
 		private void HandleButtons()
 		{
-			if ((this.currentFrameCounter == (this.framesPerCommand + this.lastTimingDelay)) && this.inMainLoop)
+			// All buttons (including DoubleTapDown) press at lastTimingDelay
+			// Then wait framesPerCommand for animation, then measure outcome
+			if ((this.currentFrameCounter == this.lastTimingDelay) && this.inMainLoop && this.lastTimingDelay > 0)
 			{
-				string buttonsPressed = SetJoypadButtons(this.commandInQueue.p1, 1);
-				buttonsPressed += String.Format(" {0} f.", this.lastTimingDelay);
-				GlobalWin.OSD.ClearGUIText();
-				GlobalWin.OSD.AddMessageForTime(buttonsPressed, _OSDMessageTimeInSeconds);
-				this.scoreContext = this.GetScore();
+				// Check if DoubleTapDown button is pressed
+				if (this.commandInQueue.p1 != null && 
+					this.commandInQueue.p1.ContainsKey("doubletapdown") && 
+					this.commandInQueue.p1["doubletapdown"] == true)
+				{
+					this.isDoubleTapDown = true;
+					this.doubleTapPhase = 0;
+					GlobalWin.OSD.ClearGUIText();
+					GlobalWin.OSD.AddMessageForTime("DoubleTapDown " + this.lastTimingDelay + " f.", _OSDMessageTimeInSeconds);
+					this.scoreContext = this.GetScore();
+				}
+				else
+				{
+					// Regular buttons: press now at timing delay
+					string buttonsPressed = SetJoypadButtons(this.commandInQueue.p1, 1);
+					buttonsPressed += String.Format(" {0} f.", this.lastTimingDelay);
+					GlobalWin.OSD.ClearGUIText();
+					GlobalWin.OSD.AddMessageForTime(buttonsPressed, _OSDMessageTimeInSeconds);
+					this.scoreContext = this.GetScore();
+				}
+			}
+
+			// Handle double-tap down sequence (starts at timing delay)
+			if (this.isDoubleTapDown && this.inMainLoop)
+			{
+				int frameInSequence = this.currentFrameCounter - this.lastTimingDelay;
+				var downButton = "P1 Down";
+
+				// Phase 0: Press down (frames 0-2)
+				if (frameInSequence >= 0 && frameInSequence < 3)
+				{
+					Global.LuaAndAdaptor.SetButton(downButton, true);
+					Global.ActiveController.Overrides(Global.LuaAndAdaptor);
+				}
+				// Phase 1: Release (frames 3-5)
+				else if (frameInSequence >= 3 && frameInSequence < 6)
+				{
+					Global.LuaAndAdaptor.UnSet(downButton);
+					Global.ActiveController.Overrides(Global.LuaAndAdaptor);
+				}
+				// Phase 2: Press down again (frames 6-8)
+				else if (frameInSequence >= 6 && frameInSequence < 9)
+				{
+					Global.LuaAndAdaptor.SetButton(downButton, true);
+					Global.ActiveController.Overrides(Global.LuaAndAdaptor);
+				}
 			}
 		}
 
@@ -934,6 +973,8 @@ namespace BizHawk.Client.EmuHawk
 				this.inMainLoop = false;
 				this.sendStateToServer = true;
 				this.lastTimingDelay = 0;
+				this.isDoubleTapDown = false;
+				this.doubleTapPhase = 0;
 				SetJoypadButtons(this.commandInQueue.p1, 1, true);
 				this._trigger += ", FinishedPressingButtons";
 			}
